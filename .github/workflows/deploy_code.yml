@@ -1,0 +1,75 @@
+name: Deploy Code - Build & Redeploy API
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'data/**'
+      - '*.dvc'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+
+          # 1. Export variables so they exist in this specific SSH session
+          export S3_BUCKET="${{ secrets.S3_BUCKET }}"
+          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          export AWS_DEFAULT_REGION="${{ secrets.AWS_REGION }}"
+          export MLFLOW_TRACKING_URI="${{ secrets.MLFLOW_TRACKING_URI }}"
+
+          cd mlflow
+          pipenv run nohup mlflow server --host 0.0.0.0 --port 5000 \
+            --default-artifact-root ${{ secrets.S3_BUCKET }} \
+            --allowed-hosts "*" --cors-allowed-origins "*" > mlflow.log 2>&1 &
+          cd ..
+          cd ~/mlops_aws
+          git pull origin main
+
+  
+          # 2. Build the image 
+          # Note: Only use --build-arg if your Dockerfile needs them during 'docker build'
+          sudo docker build \
+            --build-arg AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+            --build-arg AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+            -t mlflow-model-api .
+
+          # 3. Stop & remove old container
+          sudo docker stop api_container 2>/dev/null || true
+          sudo docker rm api_container 2>/dev/null || true
+
+          # 4. Launch new container - Passing the variables explicitly
+          sudo docker run -d \
+            --name api_container \
+            -p 8000:8000 \
+            -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+            -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+            -e AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" \
+            -e MLFLOW_TRACKING_URI="$MLFLOW_TRACKING_URI" \
+            mlflow-model-api
+          ENDSSH
+        env:
+          AWS_KEY:    ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl --fail http://${{ secrets.EC2_HOST }}:8000/ || exit 1

@@ -1,0 +1,58 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+    - path: params.yaml
+      hash: md5
+      md5: 1c8e01e2738a2c59cfcbb4d0fb8226ed
+      size: 428
+    - path: s3://lab1-s3-yana/data/raw/diabetes.csv
+      hash: md5
+      etag: ec826069a17e99e79b6292d6d2e41f83
+      size: 23934
+    - path: src/preprocess.py
+      hash: md5
+      md5: c24828feb364028f11220e6120071602
+      size: 1795
+    outs:
+    - path: data/processed/data.csv
+      hash: md5
+      md5: ce768f0f0e28c66b359893c7a72b071f
+      size: 23349
+  train:
+    cmd: python src/train.py
+    deps:
+    - path: data/processed/data.csv
+      hash: md5
+      md5: ce768f0f0e28c66b359893c7a72b071f
+      size: 23349
+    - path: params.yaml
+      hash: md5
+      md5: 1c8e01e2738a2c59cfcbb4d0fb8226ed
+      size: 428
+    - path: src/train.py
+      hash: md5
+      md5: 94f8444c791dc75f0adee6791489518e
+      size: 4885
+    outs:
+    - path: models/model.pkl
+      hash: md5
+      md5: 5c3ee152106f7d64c95aaca74f83b4fd
+      size: 1358666
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+    - path: models/model.pkl
+      hash: md5
+      md5: 5c3ee152106f7d64c95aaca74f83b4fd
+      size: 1358666
+    - path: src/evaluate.py
+      hash: md5
+      md5: 7ec8dbdd99f21f73f14a5c12e9375349
+      size: 1464
+    outs:
+    - path: metrics/metrics.json
+      hash: md5
+      md5: 2659f8be52cfa634474b88643de543e9
+      size: 37

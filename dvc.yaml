@@ -1,0 +1,34 @@
+#? These are the stages that will execute after executing 'dvc repro'
+#? For these to work you must have dvc already initiated and have already executed
+#? dvc remote add -d myremote s3://lab1-s3-yana
+#? and also aws configure in your cli.
+
+
+
+#DVC outputs are designed to be tracked files that live within your local project structure
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+      - src/preprocess.py
+      - s3://lab1-s3-yana/data/raw/diabetes.csv
+      - params.yaml
+    outs:
+      - data/processed/data.csv  # Local path
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - data/processed/data.csv
+      - params.yaml
+    outs:
+      - models/model.pkl  # Local path
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - models/model.pkl
+    outs:
+      - metrics/metrics.json  # Local path
