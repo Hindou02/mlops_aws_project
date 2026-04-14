@@ -1,0 +1,19 @@
+preprocess:
+
+  input: "s3://24266-buckets/data/raw/diabetes.csv"
+  output: "data/processed/data.csv"
+
+train:
+  data: "data/processed/data.csv"
+  model_path: "models/model.pkl"
+  random_state: 42
+  n_estimators: 100
+  max_depth: 5
+
+aws:
+  aws_access_key_id: "YOUR_ACCESS_KEY"
+  aws_secret_access_key: "YOUR_SECRET_ACCESS_KEY"
+  region_name: "ap-south-1"
+
+mlflow:
+  MLFLOW_TRACKING_URI: "http://13.203.160.27:5000"
