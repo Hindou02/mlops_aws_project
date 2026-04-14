@@ -1,19 +1,19 @@
 name: Retrain - DVC Data Pipeline
 
 on:
-  workflow_dispatch:  # Déclenchement manuel depuis GitHub
+  workflow_dispatch:
     inputs:
       reason:
-        description: 'Raison du retraining'
+        description: "Raison du retraining"
         required: false
-        default: 'Mise à jour des données'
+        default: "Mise à jour des données"
 
   push:
     branches:
       - main
     paths:
-      - '**.dvc'       # Tout fichier .dvc modifié
-      - 'dvc.lock'     # Ou le fichier lock DVC
+      - '**/*.dvc'
+      - 'dvc.lock'
 
 jobs:
   retrain:
@@ -26,75 +26,68 @@ jobs:
       - name: Configure SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          printf "%s" "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Run DVC pipeline & retrain on EC2
+      - name: Debug host and SSH port
         run: |
-          ssh -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-            
-            # 1. Export variables so they exist in this specific SSH session
-            export S3_BUCKET="${{ secrets.S3_BUCKET }}"
+          echo "Testing host: ${{ secrets.EC2_HOST }}"
+          nc -zv ${{ secrets.EC2_HOST }} 22
+
+      - name: Run DVC pipeline and retrain on EC2
+        run: |
+          ssh -vvv -o ConnectTimeout=20 -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
             export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
             export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-            export AWS_DEFAULT_REGION="${{ secrets.AWS_REGION }}"
+            export AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}"
             export MLFLOW_TRACKING_URI="${{ secrets.MLFLOW_TRACKING_URI }}"
-            
-            # Launch MLFLOW server And Navigate to project directory
-            cd mlflow
-            pipenv run nohup mlflow server --host 0.0.0.0 --port 5000 \
-                --default-artifact-root ${{ secrets.S3_BUCKET }} \
-                --allowed-hosts "*" --cors-allowed-origins "*" > mlflow.log 2>&1 &
-            cd ..
-            cd ~/mlops_aws
+
+            cd ~/mlflow
+            nohup pipenv run mlflow server \
+              --host 0.0.0.0 \
+              --port 5000 \
+              --default-artifact-root s3://24266-buckets \
+              --allowed-hosts "*" \
+              --cors-allowed-origins "*" > mlflow.log 2>&1 &
+
+            cd ~/mlops_aws_project
             git pull origin main
 
-            # Activate conda/venv if needed
-            source ~/.bashrc
+            python3 -m pip install --user "dvc[s3]" || true
 
-            # Configure AWS for DVC
-            export AWS_ACCESS_KEY_ID=$AWS_KEY
-            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET
-            export AWS_DEFAULT_REGION=$AWS_REGION
+            export PATH="$HOME/.local/bin:$PATH"
 
-            # Pull latest data from S3 via DVC
             dvc pull
-
-            # Run full ML pipeline
             dvc repro
 
-            echo 'Pipeline DVC terminé — nouveau modèle enregistré dans MLflow'
+            echo "Pipeline DVC terminé — nouveau modèle enregistré dans MLflow"
 
-            
-            # 2. Build the image 
-            # Note: Only use --build-arg if your Dockerfile needs them during 'docker build'
-            sudo docker build \
-                --build-arg AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-                --build-arg AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-                -t mlflow-model-api .
+            sudo docker build -t mlflow-model-api .
 
-            # 3. Stop & remove old container
             sudo docker stop api_container 2>/dev/null || true
             sudo docker rm api_container 2>/dev/null || true
 
-            # 4. Launch new container - Passing the variables explicitly
             sudo docker run -d \
-                --name api_container \
-                -p 8000:8000 \
-                -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
-                -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
-                -e AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" \
-                -e MLFLOW_TRACKING_URI="$MLFLOW_TRACKING_URI" \
-                mlflow-model-api
-            ENDSSH
-        env:
-          AWS_KEY:    ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-          MLFLOW_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+              --name api_container \
+              -p 8000:8000 \
+              -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+              -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+              -e AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" \
+              -e MLFLOW_TRACKING_URI="$MLFLOW_TRACKING_URI" \
+              mlflow-model-api
+          ENDSSH
 
       - name: Health check
         run: |
-          sleep 20
-          curl --fail http://${{ secrets.EC2_HOST }}:8000/ || exit 1
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+            for i in {1..12}; do
+              echo "Tentative $i..."
+              if curl --fail http://localhost:8000/; then
+                echo "API OK"
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "API non disponible après plusieurs tentatives"
+            exit 1
+          ENDSSH
