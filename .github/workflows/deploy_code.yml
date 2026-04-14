@@ -64,5 +64,15 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 30
-          curl --fail http://${{ secrets.EC2_HOST }}:8000/ || exit 1
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+            for i in {1..12}; do
+              echo "Tentative $i..."
+              if curl --fail http://localhost:8000/; then
+                echo "API OK"
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "API non disponible après plusieurs tentatives"
+            exit 1
+          ENDSSH
