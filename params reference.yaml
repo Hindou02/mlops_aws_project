@@ -20,5 +20,5 @@ aws:
   region_name: ap-south-1
 
 mlflow:
-  MLFLOW_TRACKING_URI: http://13.36.243.42:5000/
+  MLFLOW_TRACKING_URI: http://13.203.160.27:5000/
 

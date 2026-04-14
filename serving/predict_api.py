@@ -13,9 +13,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 params_path = os.path.join(BASE_DIR, "params.yaml")
 
 params = yaml.safe_load(open(params_path))
-mlflow_params = params['mlflow']
 
-mlflow.set_tracking_uri(mlflow_params["MLFLOW_TRACKING_URI"])
+# ✅ PRIORITÉ à la variable d'environnement
+mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", params["mlflow"]["MLFLOW_TRACKING_URI"])
 
 model = None
 
@@ -23,21 +23,26 @@ model = None
 async def lifespan(app: FastAPI):
     global model
 
-    print("mlflow tracking URI set to:", mlflow.get_tracking_uri(), flush=True)
+    print("mlflow tracking URI set to:", mlflow_uri, flush=True)
     print("Chargement du modèle depuis MLflow Registry...", flush=True)
     print("Model URI:", f"models:/{MODEL_NAME}/{MODEL_VERSION}", flush=True)
 
     try:
+        # ✅ utiliser la bonne URI ici
+        mlflow.set_tracking_uri(mlflow_uri)
+
         model = mlflow.pyfunc.load_model(
             model_uri=f"models:/{MODEL_NAME}/{MODEL_VERSION}"
         )
+
         print("✅ Modèle chargé avec succès", flush=True)
 
     except Exception as e:
         print("❌ ERROR loading model:", str(e), flush=True)
         traceback.print_exc()
+        model = None
 
-    yield  # app runs here
+    yield
 
     print("🔻 Shutting down app", flush=True)
 
@@ -51,6 +56,7 @@ app = FastAPI(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/")
 def home():
