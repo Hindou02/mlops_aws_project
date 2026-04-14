@@ -16,8 +16,8 @@ mflow_params = params['mlflow']
 
 def evaluate(data_path, model_path):
     data = pd.read_csv(data_path)
-    X = data.drop(columns=["Outcome"])
-    y = data["Outcome"]
+    X = data.drop(columns=["diabetes"])
+    y = data["diabetes"]
 
     mlflow.set_tracking_uri(mflow_params["MLFLOW_TRACKING_URI"])
     model_name = "Best_RandomForestClassifier"
