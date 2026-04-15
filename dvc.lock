@@ -5,8 +5,8 @@ stages:
     deps:
     - path: params.yaml
       hash: md5
-      md5: dcff571db500c7d2394d0afc3e2789fc
-      size: 620
+      md5: 595f02e004487b2c2903c113d2f58968
+      size: 458
     - path: s3://lab1-s3-yana/data/raw/diabetes.csv
       hash: md5
       etag: ec826069a17e99e79b6292d6d2e41f83
@@ -18,19 +18,19 @@ stages:
     outs:
     - path: data/processed/data.csv
       hash: md5
-      md5: 0e4d5a8ae4817cb4c8c5e058f6402679
-      size: 1870306
+      md5: 1a3335b1d4ecea2ac298f9c391a2f8ac
+      size: 1807200
   train:
     cmd: python src/train.py
     deps:
     - path: data/processed/data.csv
       hash: md5
-      md5: 0e4d5a8ae4817cb4c8c5e058f6402679
-      size: 1870306
+      md5: 1a3335b1d4ecea2ac298f9c391a2f8ac
+      size: 1807200
     - path: params.yaml
       hash: md5
-      md5: dcff571db500c7d2394d0afc3e2789fc
-      size: 620
+      md5: 595f02e004487b2c2903c113d2f58968
+      size: 458
     - path: src/train.py
       hash: md5
       md5: 173691f3ad1ec2f49135ec249eb3cdb5
@@ -38,15 +38,15 @@ stages:
     outs:
     - path: models/model.pkl
       hash: md5
-      md5: 34d2a95aeb6c75b9b9f72541c8fbf72c
-      size: 30074098
+      md5: bf7e7176ecf79231008836076d25f0df
+      size: 29744710
   evaluate:
     cmd: python src/evaluate.py
     deps:
     - path: models/model.pkl
       hash: md5
-      md5: 34d2a95aeb6c75b9b9f72541c8fbf72c
-      size: 30074098
+      md5: bf7e7176ecf79231008836076d25f0df
+      size: 29744710
     - path: src/evaluate.py
       hash: md5
       md5: 24469fd7d95b789fc65b7d6ab212cc40
@@ -54,5 +54,5 @@ stages:
     outs:
     - path: metrics/metrics.json
       hash: md5
-      md5: 22a42d5ac08dcaaeb2f013e66660ae81
-      size: 40
+      md5: 51236fb1e86dd2c1744e0cf5e57a8419
+      size: 38
